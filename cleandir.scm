@@ -5,6 +5,7 @@
     (scheme)
     (only srfi-1 append-map)
     (toml)
+    (pathname-expand)
     (chicken base)
     (chicken file))
 
@@ -13,6 +14,12 @@
                       ("target" . #:string)
                       ("extension" . #:string)
                       ("extensions" . #:list)))
+
+  (define (read-array-values array index max)
+    (if (= index max)
+        '()
+        (cons (toml-string array index)
+              (read-array-values array (add1 index) max))))
   
   (define (toml-array->list table key)
     (let* ((array (toml-array table key))
@@ -29,41 +36,20 @@
                  (getter (cdr (assoc (cdr type) toml-getters))))
         (getter table key))))
 
-  (define (list-tables table)
-    (let ((tab-info (table-info table)))
-      (get-tables table (car tab-info) (+ (car tab-info)
-                                          (cdr tab-info)))))
-
   (define (get-tables table index max)
     (if (= index max)
         '()
         (let ((key (toml-key-at table index)))
           (cons key (get-tables table (add1 index) max)))))
 
-  (define (read-config-file file)
-    (let ((table (table-from-file file)))
-      (map (lambda (x) (directory-rule (toml-table table x)))
-           (list-tables table))))
-
-  (define (read-array-values array index max)
-    (if (= index max)
-        '()
-        (cons (toml-string array index)
-              (read-array-values array (add1 index) max))))
-  
   (define (table-info table)
-    (cons  (+ (toml-count-key-vals table)
-              (toml-count-arrays table))
-           (toml-count-tables table)))
+    (values  (+ (toml-count-key-vals table)
+                (toml-count-arrays table))
+             (toml-count-tables table)))
 
-  (define (directory-rule table)
-    (when (get-key-value table "enabled")
-      (list (cons #:basedir (get-key-value table "directory"))
-            (cons #:targetbase "test")
-            (cons #:groups (append
-                            (append-map (lambda (x) (group-rule (toml-table table x)))
-                                        (list-tables table))
-                            (list (cons #f (list (cons #:dir "")))))))))
+  (define (list-tables table)
+    (let-values (((keys tables) (table-info table)))
+      (get-tables table keys  (+ keys tables))))
 
   (define (extension-rule extension target)
     (cons extension (list (cons #:dir target))))
@@ -76,13 +62,27 @@
             ((toml-key-exists? table "extensions")
              (map (lambda (x) (extension-rule x (get-key-value table "target")))
                   (get-key-value table "extensions"))))))
+
+  (define (directory-rule table)
+    (when (get-key-value table "enabled")
+      (list (cons #:basedir (get-key-value table "directory"))
+            (cons #:targetbase "test")
+            (cons #:groups (append
+                            (append-map (lambda (x) (group-rule (toml-table table x)))
+                                        (list-tables table))
+                            (list (cons #f (list (cons #:dir "")))))))))
+
+  (define (read-config-file file)
+    (let ((table (table-from-file (pathname-expand file))))
+      (map (lambda (x) (directory-rule (toml-table table x)))
+           (list-tables table))))
+
   )
 
 (module cleandir
     (clean-dir)
 
   (import
-    (readconfig)
     (scheme)
     (only srfi-1 filter)
     (chicken base)
@@ -154,13 +154,18 @@
   )
 
 (module main
-    ()
+    (main)
     
   (import
     (scheme)
     (readconfig)
-    (pathname-expand)
     (cleandir))
   
-  (define default-config-file (pathname-expand "~/.config/cleandir/config.toml"))
-  (map clean-dir (read-config-file default-config-file)))
+  (define default-config-file "~/.config/cleandir/config.toml")
+
+  (define (main)
+    (map clean-dir (read-config-file default-config-file)))
+
+  (main)
+  )
+
