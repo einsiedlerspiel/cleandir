@@ -1,0 +1,20 @@
+# This is a TOML document
+title = "Cleandir Test Config"
+
+[Downloads]
+directory = "~/Downloads"
+
+[Downloads.pdf]
+enabled = true
+extension = "pdf"
+target = "PDF"
+
+[Downloads.images]
+enabled = true
+extensions = ["jpg", "png"]
+target = "images"
+
+[Downloads.office]
+enabled = true
+extensions = ["odt", "doc", "docx", "ppt", "pptx" ]
+target= "office"

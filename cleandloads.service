@@ -1,0 +1,9 @@
+[Unit]
+Description=Cleanup Downloads Directory
+
+[Service]
+Type=oneshot
+ExecStart=
+
+[Install]
+WantedBy=
