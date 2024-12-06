@@ -32,13 +32,12 @@
 
   (define (get-key-value table key)
     (when (toml-key-exists? table key)
-      (and-let* ((type (assoc key toml-keys))
-                 (getter (cdr (assoc (cdr type) toml-getters))))
+      (and-let* ((type (alist-ref key toml-keys equal?))
+                 (getter (alist-ref type toml-getters)))
         (getter table key))))
 
   (define (get-tables table index max list)
-    (if (= index max)
-        list
+    (if (= index max) list
         (let ((key (toml-key-at table index)))
           (get-tables table (add1 index) max (cons key list)))))
 
@@ -67,10 +66,9 @@
     (when (get-key-value table "enabled")
       (list (cons #:basedir (get-key-value table "directory"))
             (cons #:target-prefix (get-key-value table "target-prefix"))
-            (cons #:groups (append
-                            (append-map (lambda (x) (group-rule (toml-table table x)))
-                                        (list-tables table))
-                            (list (cons #f (list (cons #:dir "")))))))))
+            (cons #:groups (cons (cons #f (list (cons #:dir "")))
+                                 (append-map (lambda (x) (group-rule (toml-table table x)))
+                                             (list-tables table)))))))
 
   (define (read-config-file file)
     (let ((table (table-from-file (pathname-expand file))))
@@ -123,52 +121,52 @@
     (time->string (seconds->local-time) fstring))
 
   (define (move-files target-dir files)
-    (map (lambda (x)
-           (let ((target (pathname-replace-directory x target-dir)))
-             (if (file-exists? target)
-                 (print target " exists ... skipping")
-                 (begin (print x " -> " target)
-                        (move-file x target)))))
-         files))
+    (unless (eq? files '())
+      (let ((target (pathname-replace-directory (car files)
+                                                target-dir)))
+        (if (file-exists? target)
+            (print target " exists ... skipping")
+            (begin (print (car files) " -> " target)
+                   (move-file (car files) target))))
+      (move-files target-dir (cdr files))))
 
 
-  (define (apply-rule target-dir)
-    (lambda (group)
-      (let* ((rule (cdar group))
+  (define (apply-rules target-dir groups)
+    (unless (eq? groups '())
+      (let* ((group (car groups))
+             (rule (cdar group))
              (files (cdr group))
              (target-dir (make-absolute-pathname target-dir
                                                  (alist-ref #:dir rule))))
         (create-directory target-dir #t)
-        (move-files target-dir files))))
+        (move-files target-dir files))
+      (apply-rules target-dir (cdr groups))))
   
 
-  (define (clean-dir rules)
-    (let* ((basedir (pathname-expand (alist-ref #:basedir rules)))
-           (groupdefs (alist-ref #:groups rules))
-           (target-prefix (alist-ref #:target-prefix rules))
-           (target-prefix (if (string? target-prefix)
-                              (time-format target-prefix)
-                              ""))
-           (target-dir (make-absolute-pathname basedir target-prefix))
-           (groups (group-directory-files basedir groupdefs)))
-      (print basedir " -> " target-dir)
-      (map print groups)
-      (map (apply-rule target-dir) groups)))
+  (define (clean-dir dir-rules)
+    (unless (eq? dir-rules '())
+      (let* ((rules (car dir-rules))
+             (basedir (pathname-expand (alist-ref #:basedir rules)))
+             (groupdefs (alist-ref #:groups rules))
+             (target-prefix (alist-ref #:target-prefix rules))
+             (target-prefix (if (string? target-prefix)
+                                (time-format target-prefix)
+                                ""))
+             (target-dir (make-absolute-pathname basedir target-prefix))
+             (groups (group-directory-files basedir groupdefs)))
+        (print basedir " -> " target-dir)
+        (map print groups)
+        (apply-rules target-dir groups))
+      (clean-dir (cdr dir-rules))))
   )
 
 (module main
-    (main)
+    ()
     
   (import
-    (scheme)
     (readconfig)
     (cleandir))
   
-  (define default-config-file "~/.config/cleandir/config.toml")
+  (clean-dir (read-config-file "~/.config/cleandir/config.toml"))
 
-  (define (main)
-    (map clean-dir (read-config-file default-config-file)))
-
-  (main)
   )
-
