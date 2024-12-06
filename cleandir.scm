@@ -16,32 +16,31 @@
                       ("extension" . #:string)
                       ("extensions" . #:list)))
 
-  (define (read-array-values array index max)
-    (if (= index max)
-        '()
-        (cons (toml-string array index)
-              (read-array-values array (add1 index) max))))
+  (define (read-array-values array index max list)
+    (if (= index max) list
+        (read-array-values array (add1 index) max
+                           (cons (toml-string array index) list))))
   
   (define (toml-array->list table key)
     (let* ((array (toml-array table key))
            (values (toml-count-entries array)))
-      (read-array-values array 0 values)))
+      (read-array-values array 0 values '())))
 
   (define toml-getters `((#:string . ,toml-string)
                          (#:bool . ,toml-bool)
                          (#:list . ,toml-array->list)))
 
   (define (get-key-value table key)
-    (if (toml-key-exists? table key)
-        (and-let* ((type (assoc key toml-keys))
-                   (getter (cdr (assoc (cdr type) toml-getters))))
-          (getter table key))))
+    (when (toml-key-exists? table key)
+      (and-let* ((type (assoc key toml-keys))
+                 (getter (cdr (assoc (cdr type) toml-getters))))
+        (getter table key))))
 
-  (define (get-tables table index max)
+  (define (get-tables table index max list)
     (if (= index max)
-        '()
+        list
         (let ((key (toml-key-at table index)))
-          (cons key (get-tables table (add1 index) max)))))
+          (get-tables table (add1 index) max (cons key list)))))
 
   (define (table-info table)
     (values  (+ (toml-count-key-vals table)
@@ -50,7 +49,7 @@
 
   (define (list-tables table)
     (let-values (((keys tables) (table-info table)))
-      (get-tables table keys  (+ keys tables))))
+      (get-tables table keys  (+ keys tables) '())))
 
   (define (extension-rule extension target)
     (cons extension (list (cons #:dir target))))
@@ -154,8 +153,7 @@
            (groups (group-directory-files basedir groupdefs)))
       (print basedir " -> " target-dir)
       (map print groups)
-      (map (apply-rule target-dir) groups)
-      ))
+      (map (apply-rule target-dir) groups)))
   )
 
 (module main
