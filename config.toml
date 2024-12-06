@@ -3,6 +3,7 @@ title = "Cleandir Test Config"
 
 [Downloads]
 directory = "~/Downloads"
+target-prefix = "%Y-%m"
 
 [Downloads.pdf]
 enabled = true
@@ -11,7 +12,7 @@ target = "PDF"
 
 [Downloads.images]
 enabled = true
-extensions = ["jpg", "png"]
+extensions = ["jpeg", "jpg", "png"]
 target = "images"
 
 [Downloads.office]

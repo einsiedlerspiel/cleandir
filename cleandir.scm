@@ -10,6 +10,7 @@
     (chicken file))
 
   (define toml-keys '(("enabled" . #:bool)
+                      ("target-prefix" . #:string)
                       ("directory" . #:string)
                       ("target" . #:string)
                       ("extension" . #:string)
@@ -31,10 +32,10 @@
                          (#:list . ,toml-array->list)))
 
   (define (get-key-value table key)
-    (when (toml-key-exists? table key)
-      (and-let* ((type (assoc key toml-keys))
-                 (getter (cdr (assoc (cdr type) toml-getters))))
-        (getter table key))))
+    (if (toml-key-exists? table key)
+        (and-let* ((type (assoc key toml-keys))
+                   (getter (cdr (assoc (cdr type) toml-getters))))
+          (getter table key))))
 
   (define (get-tables table index max)
     (if (= index max)
@@ -66,7 +67,7 @@
   (define (directory-rule table)
     (when (get-key-value table "enabled")
       (list (cons #:basedir (get-key-value table "directory"))
-            (cons #:targetbase "test")
+            (cons #:target-prefix (get-key-value table "target-prefix"))
             (cons #:groups (append
                             (append-map (lambda (x) (group-rule (toml-table table x)))
                                         (list-tables table))
@@ -119,8 +120,8 @@
          (group-files (map (lambda (x) (car x)) groups)
                       (classify-files dir groups))))
 
-  (define (year-month)
-    (time->string (seconds->local-time) "%Y-%m"))
+  (define (time-format fstring)
+    (time->string (seconds->local-time) fstring))
 
   (define (move-files target-dir files)
     (map (lambda (x)
@@ -145,7 +146,11 @@
   (define (clean-dir rules)
     (let* ((basedir (pathname-expand (alist-ref #:basedir rules)))
            (groupdefs (alist-ref #:groups rules))
-           (target-dir (make-absolute-pathname basedir (year-month)))
+           (target-prefix (alist-ref #:target-prefix rules))
+           (target-prefix (if (string? target-prefix)
+                              (time-format target-prefix)
+                              ""))
+           (target-dir (make-absolute-pathname basedir target-prefix))
            (groups (group-directory-files basedir groupdefs)))
       (print basedir " -> " target-dir)
       (map print groups)
