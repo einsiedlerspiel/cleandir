@@ -1,8 +1,8 @@
-;; Copyright (C) 2024  Lou Woell
+;;; Copyright (C) 2024  Lou Woell
 
 ;; This program is free software: you can redistribute it and/or modify it under
 ;; the terms of the GNU General Public License as published by the Free Software
-;; Foundation, either version 3 of the License.
+;; Foundation, version 3 of the License.
 
 ;; This program is distributed in the hope that it will be useful, but WITHOUT
 ;; ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
@@ -24,6 +24,7 @@
     (chicken file))
 
   (define toml-keys '(("enabled" . #:bool)
+                      ("move-ungrouped" . #:bool)
                       ("target-prefix" . #:string)
                       ("directory" . #:string)
                       ("target" . #:string)
@@ -76,14 +77,20 @@
              (map (lambda (x) (extension-rule x (get-key-value table "target")))
                   (get-key-value table "extensions"))))))
 
+  (define (make-group-rules table)
+    (let ((rules (append-map
+                  (lambda (x) (group-rule (toml-table table x)))
+                  (list-tables table))))
+      (if (get-key-value table "move-ungrouped")
+          (cons (cons #f (list (cons #:dir "")))
+                rules)
+          rules)))
+
   (define (directory-rule table)
     (when (get-key-value table "enabled")
       (list (cons #:basedir (get-key-value table "directory"))
             (cons #:target-prefix (get-key-value table "target-prefix"))
-            (cons #:groups (cons (cons #f (list (cons #:dir "")))
-                                 (append-map
-                                  (lambda (x) (group-rule (toml-table table x)))
-                                  (list-tables table)))))))
+            (cons #:groups (make-group-rules table)))))
 
   (define (read-config-file file)
     (when (not (file-exists? file))

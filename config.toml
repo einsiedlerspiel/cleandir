@@ -4,6 +4,7 @@ title = "Cleandir Test Config"
 [Downloads]
 directory = "~/Downloads"
 target-prefix = "%Y-%m"
+move-ungrouped = true
 
 [Downloads.pdf]
 enabled = true
@@ -17,5 +18,9 @@ target = "images"
 
 [Downloads.office]
 enabled = true
-extensions = ["odt", "doc", "docx", "ppt", "pptx" ]
+extensions = [
+           "odt", "doc", "docx",
+           "odp", "ppt", "pptx",
+           "ods", "xsl", "xslx"
+           ]
 target= "office"

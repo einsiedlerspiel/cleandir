@@ -17,7 +17,11 @@ directory = "~/Downloads"
 # following the rules of the C library procedure `strftime`.
 target-prefix = "%Y-%m"
 
-# Any sub tables define rules for groups of files identified by 
+# Optional key to disable moving files not matching a group
+# (default=true).
+move-ungrouped = true
+
+# Any sub tables define rules for groups of files identified by
 # their extension.
 [Downloads.pdf]
 enabled = true       # optional key to disable a rule temporarily
@@ -27,10 +31,19 @@ target = "PDF"       # subdir of `target-prefix` to use as target
 [Downloads.images]
 enabled = true
 
-# instead of a single `extension` an array of `extensions` can be 
+# instead of a single `extension` an array of `extensions` can be
 # given
 extensions = ["jpeg", "jpg", "png"]
 target = "images"
+
+[Downloads.office]
+enabled = true
+extensions = [
+           "odt", "doc", "docx",
+           "odp", "ppt", "pptx",
+           "ods", "xsl", "xslx"
+           ]
+target= "office"
 ```
 
 ## Building and Installing
@@ -49,7 +62,7 @@ This repository comes with a systemd unit and timer, which can be used to run
 the programm periodically. The default period is weekly. To activate run
 
 ```bash
-systemctl --user enable cleandloads.timer 
+systemctl --user enable cleandloads.timer
 ```
 
 ## Contributing
@@ -63,5 +76,3 @@ with patches, suggestions and questions via [mail](mailto:lou+git@repetitions.de
 - automatic renaming of files
 - Date expansion in group rules
 - Date expansion based on date-modified instead of local-time
-
-

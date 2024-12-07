@@ -1,5 +1,5 @@
 [Unit]
-Description= Clean up my Downloadsdirectory
+Description= Clean up Directories
 
 [Timer]
 OnCalendar=weekly
