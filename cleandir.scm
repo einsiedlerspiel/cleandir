@@ -1,3 +1,17 @@
+;; Copyright (C) 2024  Lou Woell
+
+;; This program is free software: you can redistribute it and/or modify it under
+;; the terms of the GNU General Public License as published by the Free Software
+;; Foundation, either version 3 of the License.
+
+;; This program is distributed in the hope that it will be useful, but WITHOUT
+;; ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+;; FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+;; details.
+
+;; You should have received a copy of the GNU General Public License along with
+;; this program. If not, see <https://www.gnu.org/licenses/>.
+
 (module readconfig
     (read-config-file)
 
@@ -181,31 +195,35 @@
   (define-constant default-config (get-environment-variable "CONFIG_PATH"))
   
   (define config-file  "~/.config/cleandir/config.toml")
-  (define options (list
-                   (args:make-option (c config-file) #:required
-                                     "Config file to use."
-                                     (set! config-file arg))
-                   (args:make-option (s setup) #:none
-                                     "Setup default Config."
-                                     (let* ((orig (pathname-expand default-config))
-                                            (dest (pathname-expand config-file))
-                                            (dest-dir (pathname-directory dest)))
-                                       (unless (directory-exists? dest-dir)
-                                         (create-directory dest-dir #t))
-                                       (if (file-exists? dest)
-                                           (print dest " already exists.")
-                                           (copy-file orig dest #f))
-                                       (exit 0)))
-
-                   (args:make-option (h help) #:none
-                                     "Show this help"
-                                     (usage))))
-
+  (define options
+    (list
+     (args:make-option (c config-file) #:required
+                       "Config file to use."
+                       (set! config-file arg))
+     (args:make-option (s setup) #:none
+                       "Setup user config"
+                       (let* ((orig (pathname-expand default-config))
+                              (dest (pathname-expand config-file))
+                              (dest-dir (pathname-directory dest)))
+                         (unless (directory-exists? dest-dir)
+                           (create-directory dest-dir #t))
+                         (if (file-exists? dest)
+                             (print dest " already exists.")
+                             (copy-file orig dest #f))
+                         (exit 0)))
+     (args:make-option (h help) #:none
+                       "Show this help"
+                       (usage))))
+  
   (define (usage)
     (print "Usage:" (car (argv)) " [options...] ")
     (newline)
     (print (args:usage options))
-    (print default-config)
+    (print "User Config File: " config-file)
+    (print "Default Config File: " default-config)
+    (newline)
+    (print "Copyright (C) 2024 Lou Woell")
+    (print "See source code for licensing information")
     (exit 0))
 
   (define (parse-args)
@@ -223,4 +241,4 @@
 
   (parse-args)
   (clean-dir (read-config-file (pathname-expand config-file)))
-)
+  )

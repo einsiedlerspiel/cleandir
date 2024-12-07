@@ -2,7 +2,7 @@ CC=chicken-csc
 PREFIX=$(HOME)/.local
 
 BIN=clean-dload-dir
-BIN_PATH=$(PREFIX)/$(BIN)
+BIN_PATH=$(PREFIX)/bin/$(BIN)
 
 CONFIG_FILE=config.toml
 export CONFIG_PATH=$(PREFIX)/share/cleandir/$(CONFIG_FILE)
@@ -25,7 +25,6 @@ install:
 	$(DESTDIR)$(SYSD_UNIT_PATH)/$(SYSD_UNIT).service
 
 uninstall:
-
 	rm $(DESTDIR)$(BIN_PATH)
 	rm $(DESTDIR)$(CONFIG_PATH)
 	rm $(DESTDIR)$(SYSD_UNIT_PATH)/$(SYSD_UNIT).timer 
