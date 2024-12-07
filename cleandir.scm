@@ -162,8 +162,9 @@
       (let* ((group (car groups))
              (rule (cdar group))
              (files (cdr group))
-             (target-dir (make-absolute-pathname target-dir
-                                                 (alist-ref #:dir rule))))
+             (target-dir (time-format
+                          (make-absolute-pathname target-dir
+                                                  (alist-ref #:dir rule)))))
         (create-directory target-dir #t)
         (move-files target-dir files))
       (apply-rules target-dir (cdr groups))))
@@ -175,9 +176,7 @@
              (basedir (pathname-expand (alist-ref #:basedir rules)))
              (groupdefs (alist-ref #:groups rules))
              (target-prefix (alist-ref #:target-prefix rules))
-             (target-prefix (if (string? target-prefix)
-                                (time-format target-prefix)
-                                ""))
+             (target-prefix (if (string? target-prefix) target-prefix ""))
              (target-dir (make-absolute-pathname basedir target-prefix))
              (groups (group-directory-files basedir groupdefs)))
         (print basedir " -> " target-dir)

@@ -74,5 +74,4 @@ with patches, suggestions and questions via [mail](mailto:lou+git@repetitions.de
 
 - more flexible group definitions
 - automatic renaming of files
-- Date expansion in group rules
 - Date expansion based on date-modified instead of local-time
