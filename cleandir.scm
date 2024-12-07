@@ -178,8 +178,7 @@
     (args))
 
 
-  (define-constant default-config (make-absolute-pathname (get-environment-variable "PREFIX")
-                                                          "share/cleandir/config.toml"))
+  (define-constant default-config (get-environment-variable "CONFIG_PATH"))
   
   (define config-file  "~/.config/cleandir/config.toml")
   (define options (list
