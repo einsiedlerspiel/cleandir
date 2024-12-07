@@ -5,8 +5,8 @@
     (scheme)
     (only srfi-1 append-map)
     (toml)
-    (pathname-expand)
     (chicken base)
+    (chicken format)
     (chicken file))
 
   (define toml-keys '(("enabled" . #:bool)
@@ -20,7 +20,7 @@
     (if (= index max) list
         (read-array-values array (add1 index) max
                            (cons (toml-string array index) list))))
-  
+
   (define (toml-array->list table key)
     (let* ((array (toml-array table key))
            (values (toml-count-entries array)))
@@ -67,11 +67,16 @@
       (list (cons #:basedir (get-key-value table "directory"))
             (cons #:target-prefix (get-key-value table "target-prefix"))
             (cons #:groups (cons (cons #f (list (cons #:dir "")))
-                                 (append-map (lambda (x) (group-rule (toml-table table x)))
-                                             (list-tables table)))))))
+                                 (append-map
+                                  (lambda (x) (group-rule (toml-table table x)))
+                                  (list-tables table)))))))
 
   (define (read-config-file file)
-    (let ((table (table-from-file (pathname-expand file))))
+    (when (not (file-exists? file))
+      (print (format #f "Config file ~A does not exist!" file))
+      (exit 1))
+    (print "config: " file)
+    (let ((table (table-from-file file)))
       (map (lambda (x) (directory-rule (toml-table table x)))
            (list-tables table))))
 
@@ -103,7 +108,7 @@
 
   (define (ft? ft)
     (lambda (x) (equal? (car x) ft)))
-  
+
   (define (group-files-fn ext)
     (lambda (x) (cons ext (map cdr (filter (ft? ext) x)))))
 
@@ -141,7 +146,7 @@
         (create-directory target-dir #t)
         (move-files target-dir files))
       (apply-rules target-dir (cdr groups))))
-  
+
 
   (define (clean-dir dir-rules)
     (unless (eq? dir-rules '())
@@ -160,13 +165,63 @@
       (clean-dir (cdr dir-rules))))
   )
 
+(module cmd-args
+    (parse-args
+     config-file)
+  (import
+    (scheme)
+    (chicken base)
+    (chicken file)
+    (pathname-expand)
+    (chicken pathname)
+    (chicken process-context)
+    (args))
+
+
+  (define-constant default-config (make-absolute-pathname (get-environment-variable "PREFIX")
+                                                          "share/cleandir/config.toml"))
+  
+  (define config-file  "~/.config/cleandir/config.toml")
+  (define options (list
+                   (args:make-option (c config-file) #:required
+                                     "Config file to use."
+                                     (set! config-file arg))
+                   (args:make-option (s setup) #:none
+                                     "Setup default Config."
+                                     (let* ((orig (pathname-expand default-config))
+                                            (dest (pathname-expand config-file))
+                                            (dest-dir (pathname-directory dest)))
+                                       (unless (directory-exists? dest-dir)
+                                         (create-directory dest-dir #t))
+                                       (if (file-exists? dest)
+                                           (print dest " already exists.")
+                                           (copy-file orig dest #f))
+                                       (exit 0)))
+
+                   (args:make-option (h help) #:none
+                                     "Show this help"
+                                     (usage))))
+
+  (define (usage)
+    (print "Usage:" (car (argv)) " [options...] ")
+    (newline)
+    (print (args:usage options))
+    (print default-config)
+    (exit 0))
+
+  (define (parse-args)
+    (args:parse (command-line-arguments) options))
+  )
+
 (module main
     ()
-    
-  (import
-    (readconfig)
-    (cleandir))
-  
-  (clean-dir (read-config-file "~/.config/cleandir/config.toml"))
 
-  )
+  (import
+    (cmd-args)
+    (readconfig)
+    (pathname-expand)
+    (cleandir))
+
+  (parse-args)
+  (clean-dir (read-config-file (pathname-expand config-file)))
+)
