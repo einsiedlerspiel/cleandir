@@ -335,14 +335,16 @@
   )
 
 (module main
-    ()
+    (main)
 
   (import
+    (only scheme define)
     (cmd-args)
     (readconfig)
     (pathname-expand)
     (cleandir))
 
-  (parse-args)
-  (clean-dir (read-config-file (pathname-expand config-file)))
+  (define (main)
+    (parse-args)
+    (clean-dir (read-config-file (pathname-expand config-file))))
   )

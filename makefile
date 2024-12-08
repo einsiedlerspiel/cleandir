@@ -1,4 +1,7 @@
 CC=chicken-csc
+
+CSCFLAGS= -vv -strict-types -local -inline
+
 PREFIX=$(HOME)/.local
 
 BIN=clean-dload-dir
@@ -11,7 +14,7 @@ SYSD_UNIT=cleandloads
 SYSD_UNIT_PATH=$(PREFIX)/share/systemd/user
 
 $(BIN): cleandir.scm
-	$(CC) $^ -o $@ -vv
+	$(CC) $^ -o $@ $(CSCFLAGS) -postlude "(import main)(main)"
 
 .Phony: install
 install:
