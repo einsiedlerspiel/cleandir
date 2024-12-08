@@ -25,6 +25,7 @@
 
   (define toml-keys '(("enabled" . #:bool)
                       ("move-ungrouped" . #:bool)
+                      ("remove-duplicates" . #:bool)
                       ("target-prefix" . #:string)
                       ("directory" . #:string)
                       ("target" . #:string)
@@ -65,17 +66,23 @@
     (let-values (((keys tables) (table-info table)))
       (get-tables table keys  (+ keys tables) '())))
 
-  (define (extension-rule extension target)
-    (cons extension (list (cons #:dir target))))
+  (define (extension-rules extensions table lst)
+    (if (eq? extensions '()) lst
+        (let ((extension (car extensions))
+              (target (get-key-value table "target"))
+              (dups (if (get-key-value table "remove-duplicates") #t #f)))
+          (extension-rules (cdr extensions)
+                           table
+                           (cons (cons extension (list (cons #:dir target)
+                                                       (cons #:dups dups)))
+                                 lst)))))
 
   (define (group-rule table)
     (when (get-key-value table "enabled")
       (cond ((toml-key-exists? table "extension")
-             (list (extension-rule (get-key-value table "extension")
-                                   (get-key-value table "target"))))
+             (extension-rules (list (get-key-value table "extension")) table '()))
             ((toml-key-exists? table "extensions")
-             (map (lambda (x) (extension-rule x (get-key-value table "target")))
-                  (get-key-value table "extensions"))))))
+             (extension-rules (get-key-value table "extensions") table '())))))
 
   (define (make-group-rules table)
     (let ((rules (append-map
@@ -103,11 +110,81 @@
 
   )
 
+(module checkdups
+    (remove-duplicates)
+
+  (import
+    (scheme)
+    (srfi-1)
+    (chicken base)
+    (chicken file)
+    (chicken file posix)
+    (chicken pathname)
+    (pathname-expand)
+    (simple-md5))
+
+  (define (get-duplicates alist dups)
+    (if (eq? alist '()) dups
+        (let ((head (car alist))
+              (tail (cdr alist)))
+          (get-duplicates
+           tail
+           (if (assoc (car head) tail)
+               (let ((dups (if (or (eq? '() dups)
+                                   (not (assoc (car head) dups)))
+                               (cons (list (car head) (cdr head)) dups)
+                               dups)))
+                 (and (set-cdr! (assoc (car head) dups)
+                                (cons (alist-ref (car head) tail equal?)
+                                      (alist-ref (car head) dups equal?)))
+                      dups))
+               dups)))))
+
+
+  (define (get-files dir)
+    (filter-map (lambda (x) (let ((file (make-absolute-pathname dir x)))
+                         (and (not (directory? file))
+                              file)))
+                (directory dir)))
+
+  (define (sum-cons x)
+    (cons (file-md5sum x)
+          x))
+
+  ;; Returns a list of duplicate files in directory files.
+  (define (directories-duplicates list)
+    (let* ((expdirs (map pathname-expand list))
+           (files (append-map get-files expdirs)))
+      (get-duplicates (map sum-cons files) '())))
+
+  (define (remove-files-in-list list)
+    (unless (eq? list '())
+      (print "delete duplicate:" (car list))
+      (delete-file* (car list))
+      (remove-files-in-list (cdr list))))
+
+  ;; Takes a list of directories, checks for duplicate files and
+  ;; removes them so only one copy of each remains.
+  ;; The first copy encountered is the one that will survive.
+  ;; TODO: Add some more specific control over which copy is kept.
+  (define (remove-duplicates dirlist)
+    (let ((dup-list (append-map
+                     (lambda (x)
+                       ;; 1. Element is always md5sum
+                       ;; 2. Element is first version of the file
+                       ;; 3. to last element are files to delete
+                       (cddr x))
+                     (directories-duplicates dirlist))))
+      (remove-files-in-list dup-list)))
+
+  )
+
 (module cleandir
     (clean-dir)
 
   (import
     (scheme)
+    (checkdups)
     (only srfi-1 filter)
     (chicken base)
     (chicken file)
@@ -146,28 +223,47 @@
   (define (time-format fstring)
     (time->string (seconds->local-time) fstring))
 
-  (define (move-files target-dir files)
+  (define (make-target-pairs target-dir files list)
+    (if (eq? files '()) list
+        (make-target-pairs target-dir
+                           (cdr files)
+                           (cons (cons (car files)
+                                       (pathname-replace-directory (car files)
+                                                                   target-dir))
+                                 list))))
+
+  (define (move-files files)
     (unless (eq? files '())
-      (let ((target (pathname-replace-directory (car files)
-                                                target-dir)))
-        (if (file-exists? target)
-            (print target " exists ... skipping")
-            (begin (print (car files) " -> " target)
-                   (move-file (car files) target))))
-      (move-files target-dir (cdr files))))
+      (let ((target (car files)))
+        (cond ((file-exists? (cdr target))
+               (print (cdr target) " exists ... renaming")
+               (move-files (cons
+                            (cons (car target)
+                                  (pathname-replace-file
+                                   (cdr target)
+                                   (string-append (pathname-file (cdr target))
+                                                  "-dup")))
+                            (cdr files))))
+              (else
+               (begin (print (car target) " -> " (cdr target))
+                      (move-file (car target) (cdr target)))
+               (move-files (cdr files)))))))
 
 
-  (define (apply-rules target-dir groups)
+  (define (apply-rules basedir target-dir groups)
     (unless (eq? groups '())
       (let* ((group (car groups))
              (rule (cdar group))
              (files (cdr group))
              (target-dir (time-format
                           (make-absolute-pathname target-dir
-                                                  (alist-ref #:dir rule)))))
+                                                  (alist-ref #:dir rule))))
+             (targets (make-target-pairs target-dir files '())))
         (create-directory target-dir #t)
-        (move-files target-dir files))
-      (apply-rules target-dir (cdr groups))))
+        (when (alist-ref #:dups rule)
+          (remove-duplicates (list basedir target-dir)))
+        (move-files targets))
+      (apply-rules basedir target-dir (cdr groups))))
 
 
   (define (clean-dir dir-rules)
@@ -181,7 +277,7 @@
              (groups (group-directory-files basedir groupdefs)))
         (print basedir " -> " target-dir)
         (map print groups)
-        (apply-rules target-dir groups))
+        (apply-rules basedir target-dir groups))
       (clean-dir (cdr dir-rules))))
   )
 
@@ -199,7 +295,7 @@
 
 
   (define-constant default-config (get-environment-variable "CONFIG_PATH"))
-  
+
   (define config-file  "~/.config/cleandir/config.toml")
   (define options
     (list
@@ -220,7 +316,7 @@
      (args:make-option (h help) #:none
                        "Show this help"
                        (usage))))
-  
+
   (define (usage)
     (print "Usage:" (car (argv)) " [options...] ")
     (newline)

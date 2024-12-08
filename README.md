@@ -31,6 +31,10 @@ target = "PDF"       # subdir of `target-prefix` to use as target
 [Downloads.images]
 enabled = true
 
+# Optional key, if true (default) removes duplicate files matched
+# by the rule
+remove-duplicates = true
+
 # instead of a single `extension` an array of `extensions` can be
 # given
 extensions = ["jpeg", "jpg", "png"]
