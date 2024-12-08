@@ -69,12 +69,9 @@
   (define (extension-rules extensions table lst)
     (if (eq? extensions '()) lst
         (let ((extension (car extensions))
-              (target (get-key-value table "target"))
-              (dups (if (get-key-value table "remove-duplicates") #t #f)))
-          (extension-rules (cdr extensions)
-                           table
-                           (cons (cons extension (list (cons #:dir target)
-                                                       (cons #:dups dups)))
+              (target (get-key-value table "target")))
+          (extension-rules (cdr extensions) table
+                           (cons (cons extension (list (cons #:dir target)))
                                  lst)))))
 
   (define (group-rule table)
@@ -97,6 +94,8 @@
     (when (get-key-value table "enabled")
       (list (cons #:basedir (get-key-value table "directory"))
             (cons #:target-prefix (get-key-value table "target-prefix"))
+            (cons #:dups (if (get-key-value table "remove-duplicates")
+                             #t #f))
             (cons #:groups (make-group-rules table)))))
 
   (define (read-config-file file)
@@ -235,22 +234,27 @@
   (define (move-files files)
     (unless (eq? files '())
       (let ((target (car files)))
-        (cond ((file-exists? (cdr target))
-               (print (cdr target) " exists ... renaming")
-               (move-files (cons
-                            (cons (car target)
-                                  (pathname-replace-file
-                                   (cdr target)
-                                   (string-append (pathname-file (cdr target))
-                                                  "-dup")))
-                            (cdr files))))
-              (else
-               (begin (print (car target) " -> " (cdr target))
-                      (move-file (car target) (cdr target)))
+        (cond
+         ;; relevant if source file was deleted as a duplicate
+         ((not (file-exists? (car target)))
+          (move-files (cdr files)))
+         ;; relevant if a different file with the same name exists
+         ((file-exists? (cdr target))
+          (print (cdr target) " exists ... renaming")
+          (move-files (cons
+                       (cons (car target)
+                             (pathname-replace-file
+                              (cdr target)
+                              (string-append (pathname-file (cdr target))
+                                             "-dup")))
+                       (cdr files))))
+         ;; finally move file
+         (else (print (car target) " -> " (cdr target))
+               (move-file (car target) (cdr target))
                (move-files (cdr files)))))))
 
 
-  (define (apply-rules basedir target-dir groups)
+  (define (apply-rules basedir target-dir groups dups)
     (unless (eq? groups '())
       (let* ((group (car groups))
              (rule (cdar group))
@@ -260,24 +264,22 @@
                                                   (alist-ref #:dir rule))))
              (targets (make-target-pairs target-dir files '())))
         (create-directory target-dir #t)
-        (when (alist-ref #:dups rule)
-          (remove-duplicates (list basedir target-dir)))
+        (when dups (remove-duplicates (list basedir target-dir)))
         (move-files targets))
-      (apply-rules basedir target-dir (cdr groups))))
+      (apply-rules basedir target-dir (cdr groups) dups)))
 
 
   (define (clean-dir dir-rules)
     (unless (eq? dir-rules '())
       (let* ((rules (car dir-rules))
              (basedir (pathname-expand (alist-ref #:basedir rules)))
-             (groupdefs (alist-ref #:groups rules))
              (target-prefix (alist-ref #:target-prefix rules))
              (target-prefix (if (string? target-prefix) target-prefix ""))
              (target-dir (make-absolute-pathname basedir target-prefix))
-             (groups (group-directory-files basedir groupdefs)))
+             (groups (group-directory-files basedir (alist-ref #:groups rules))))
         (print basedir " -> " target-dir)
         (map print groups)
-        (apply-rules basedir target-dir groups))
+        (apply-rules basedir target-dir groups (alist-ref #:dups rules)))
       (clean-dir (cdr dir-rules))))
   )
 

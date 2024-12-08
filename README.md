@@ -21,6 +21,11 @@ target-prefix = "%Y-%m"
 # (default=true).
 move-ungrouped = true
 
+# Optional key, if true (default) removes duplicate files
+# Equality is established via md5sum. Affected are files 
+# in the basedir and the target-dir of the current run.
+remove-duplicates = true
+
 # Any sub tables define rules for groups of files identified by
 # their extension.
 [Downloads.pdf]
@@ -30,10 +35,6 @@ target = "PDF"       # subdir of `target-prefix` to use as target
 
 [Downloads.images]
 enabled = true
-
-# Optional key, if true (default) removes duplicate files matched
-# by the rule
-remove-duplicates = true
 
 # instead of a single `extension` an array of `extensions` can be
 # given
