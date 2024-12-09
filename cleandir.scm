@@ -110,7 +110,8 @@
   )
 
 (module checkdups
-    (remove-duplicates)
+    (remove-duplicates
+     dir-remove-duplicates)
 
   (import
     (scheme)
@@ -141,20 +142,38 @@
 
 
   (define (get-files dir)
-    (filter-map (lambda (x) (let ((file (make-absolute-pathname dir x)))
-                         (and (not (directory? file))
-                              file)))
-                (directory dir)))
+    (let ((dir (pathname-expand dir)))
+      (filter-map (lambda (x) (let ((file (make-absolute-pathname dir x)))
+                           (and (not (directory? file))
+                                file)))
+                  (directory dir))))
+
+  (define (get-dirs dir)
+    (let ((dir (pathname-expand dir)))
+      (filter-map (lambda (x) (let ((file (make-absolute-pathname dir x)))
+                           (and (directory? file) file)))
+                  (directory dir))))
 
   (define (sum-cons x)
     (cons (file-md5sum x)
           x))
 
+  (define (group-duplicates files)
+    (get-duplicates (map sum-cons files) '()))
+
   ;; Returns a list of duplicate files in directory files.
   (define (directories-duplicates list)
     (let* ((expdirs (map pathname-expand list))
            (files (append-map get-files expdirs)))
-      (get-duplicates (map sum-cons files) '())))
+      (group-duplicates files)))
+
+  (define (recursive-find-files dirs files)
+    (if (eq? dirs '()) files
+        (recursive-find-files (append (cdr dirs) (get-dirs (car dirs)))
+                              (append (get-files (car dirs)) files))))
+
+  (define (recursive-group-duplicates dirs)
+    (group-duplicates (recursive-find-files dirs '())))
 
   (define (remove-files-in-list list)
     (unless (eq? list '())
@@ -162,19 +181,24 @@
       (delete-file* (car list))
       (remove-files-in-list (cdr list))))
 
-  ;; Takes a list of directories, checks for duplicate files and
-  ;; removes them so only one copy of each remains.
-  ;; The first copy encountered is the one that will survive.
-  ;; TODO: Add some more specific control over which copy is kept.
-  (define (remove-duplicates dirlist)
-    (let ((dup-list (append-map
-                     (lambda (x)
-                       ;; 1. Element is always md5sum
-                       ;; 2. Element is first version of the file
-                       ;; 3. to last element are files to delete
-                       (cddr x))
-                     (directories-duplicates dirlist))))
-      (remove-files-in-list dup-list)))
+  ;; takes a list of files as returned by `group-duplicates', then deletes
+  ;; duplicate files.
+  (define (remove-duplicates dups)
+    (remove-files-in-list
+     (append-map
+      (lambda (x)
+        ;; 1. Element is always md5sum
+        ;; 2. Element is first version of the file
+        ;; 3. to last element are files to delete
+        (cddr x)) dups)))
+
+  ;; Like `remove-duplicates' but takes a list of directories to check for
+  ;; duplicates. Optionally recurs through subdirectories.
+  (define (dir-remove-duplicates dirs #!optional (recur #f))
+    (let ((dups (if recur
+                    (recursive-group-duplicates dirs)
+                    (directories-duplicates dirs))))
+      (remove-duplicates dups)))
 
   )
 
@@ -264,7 +288,7 @@
                                                   (alist-ref #:dir rule))))
              (targets (make-target-pairs target-dir files '())))
         (create-directory target-dir #t)
-        (when dups (remove-duplicates (list basedir target-dir)))
+        (when dups (dir-remove-duplicates (list basedir target-dir)))
         (move-files targets))
       (apply-rules basedir target-dir (cdr groups) dups)))
 
