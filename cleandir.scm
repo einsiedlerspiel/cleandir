@@ -21,7 +21,7 @@
     (toml)
     (chicken base)
     (chicken format)
-    (chicken file))
+    (only (chicken file) file-exists?))
 
   (define toml-keys '(("enabled" . #:bool)
                       ("move-ungrouped" . #:bool)
@@ -109,18 +109,68 @@
 
   )
 
-(module checkdups
-    (remove-duplicates
-     dir-remove-duplicates)
+(module file-actions
+    (find-files
+     remove-files-in-list)
 
   (import
     (scheme)
+    (only (srfi-1) filter-map)
+    (pathname-expand)
+    (only (chicken base) unless print)
+    (only (chicken pathname) make-absolute-pathname)
+    (only (chicken file posix) directory? symbolic-link?)
+    (only (chicken file) directory delete-file*))
+
+  (define (get-files dir #!key (dirs? #t) (symlinks? #t))
+    (let ((dir (pathname-expand dir)))
+      (filter-map (lambda (x) (let ((file (make-absolute-pathname dir x)))
+                           (and
+                            ;;options for directories
+                            (cond ((not dirs?) (not (directory? file)))
+                                  ((eq? dirs? 'only) (directory? file))
+                                  (else #t))
+                            ;;options for symlinks
+                            (cond ((not symlinks?) (not (symbolic-link? file)))
+                                  ((eq? symlinks? 'only) (symbolic-link? file))
+                                  (else #t))
+                            file)))
+                  (directory dir))))
+
+  (define (find-files dirs #!key (files '()) (recur? #t) (dirs? #f)
+                      (follow-symlinks? #f) (return-symlinks? #f))
+    (if (or (eq? dirs '())) files
+        (find-files
+         (if recur? (append (cdr dirs) (get-files (car dirs) #:dirs? 'only
+                                                  #:symlinks? follow-symlinks?))
+             (cdr dirs))
+         #:files (append (get-files (car dirs)
+                                    #:dirs? dirs?
+                                    #:symlinks? return-symlinks?)
+                         files)
+         #:follow-symlinks? follow-symlinks?
+         #:recur? recur?
+         #:dirs? dirs?)))
+
+  (define (remove-files-in-list list)
+    (unless (eq? list '())
+      (print "delete duplicate:" (car list))
+      (delete-file* (car list))
+      (remove-files-in-list (cdr list))))
+
+  )
+
+
+(module checkdups
+    (group-duplicates
+     remove-duplicates
+     dir-remove-duplicates)
+
+  (import
+    (file-actions)
+    (scheme)
     (srfi-1)
     (chicken base)
-    (chicken file)
-    (chicken file posix)
-    (chicken pathname)
-    (pathname-expand)
     (simple-md5))
 
   (define (get-duplicates alist dups)
@@ -141,19 +191,6 @@
                dups)))))
 
 
-  (define (get-files dir)
-    (let ((dir (pathname-expand dir)))
-      (filter-map (lambda (x) (let ((file (make-absolute-pathname dir x)))
-                           (and (not (directory? file))
-                                file)))
-                  (directory dir))))
-
-  (define (get-dirs dir)
-    (let ((dir (pathname-expand dir)))
-      (filter-map (lambda (x) (let ((file (make-absolute-pathname dir x)))
-                           (and (directory? file) file)))
-                  (directory dir))))
-
   (define (sum-cons x)
     (cons (file-md5sum x)
           x))
@@ -161,44 +198,24 @@
   (define (group-duplicates files)
     (get-duplicates (map sum-cons files) '()))
 
-  ;; Returns a list of duplicate files in directory files.
-  (define (directories-duplicates list)
-    (let* ((expdirs (map pathname-expand list))
-           (files (append-map get-files expdirs)))
-      (group-duplicates files)))
-
-  (define (recursive-find-files dirs files)
-    (if (eq? dirs '()) files
-        (recursive-find-files (append (cdr dirs) (get-dirs (car dirs)))
-                              (append (get-files (car dirs)) files))))
-
-  (define (recursive-group-duplicates dirs)
-    (group-duplicates (recursive-find-files dirs '())))
-
-  (define (remove-files-in-list list)
-    (unless (eq? list '())
-      (print "delete duplicate:" (car list))
-      (delete-file* (car list))
-      (remove-files-in-list (cdr list))))
+  (define (get-duplicate-groups dirs #!key (recur? #f) )
+    (group-duplicates
+     (find-files dirs #:recur? recur? #:follow-symlinks #f)))
 
   ;; takes a list of files as returned by `group-duplicates', then deletes
   ;; duplicate files.
   (define (remove-duplicates dups)
     (remove-files-in-list
-     (append-map
-      (lambda (x)
-        ;; 1. Element is always md5sum
-        ;; 2. Element is first version of the file
-        ;; 3. to last element are files to delete
-        (cddr x)) dups)))
+      ;; 1. Element is always md5sum
+      ;; 2. Element is first version of the file
+      ;; 3. to last element are files to delete
+     (append-map cddr dups)))
 
   ;; Like `remove-duplicates' but takes a list of directories to check for
-  ;; duplicates. Optionally recurs through subdirectories.
+  ;; duplicates. Optionally recurs through subdirectories. ignores symlinked
+  ;; directories.
   (define (dir-remove-duplicates dirs #!optional (recur #f))
-    (let ((dups (if recur
-                    (recursive-group-duplicates dirs)
-                    (directories-duplicates dirs))))
-      (remove-duplicates dups)))
+    (remove-duplicates (get-duplicate-groups dirs #:recur? recur)))
 
   )
 
@@ -238,9 +255,9 @@
          (map group-files-fn exts)))
 
   (define (group-directory-files dir groups)
-    (map (lambda (x) (cons  (assoc (car x) groups)
-                       (cdr x)))
-         (group-files (map (lambda (x) (car x)) groups)
+    (map (lambda (x) (cons (assoc (car x) groups)
+                      (cdr x)))
+         (group-files (map car groups)
                       (classify-files dir groups))))
 
   (define (time-format fstring)
