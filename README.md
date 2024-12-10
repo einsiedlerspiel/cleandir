@@ -22,8 +22,8 @@ target-prefix = "%Y-%m"
 move-ungrouped = true
 
 # Optional key, if true (default) removes duplicate files
-# Equality is established via md5sum. Affected are files 
-# in the basedir and the target-dir of the current run.
+# from `directory` and it's subdirectories before applying the
+# group rules. This affects `target-prefix`.
 remove-duplicates = true
 
 # Any sub tables define rules for groups of files identified by

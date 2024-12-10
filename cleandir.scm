@@ -163,6 +163,7 @@
 
 (module checkdups
     (group-duplicates
+     get-duplicate-groups
      remove-duplicates
      dir-remove-duplicates)
 
@@ -199,8 +200,7 @@
     (get-duplicates (map sum-cons files) '()))
 
   (define (get-duplicate-groups dirs #!key (recur? #f) )
-    (group-duplicates
-     (find-files dirs #:recur? recur? #:follow-symlinks #f)))
+    (group-duplicates (find-files dirs #:recur? recur? #:follow-symlinks #f)))
 
   ;; takes a list of files as returned by `group-duplicates', then deletes
   ;; duplicate files.
@@ -295,7 +295,7 @@
                (move-files (cdr files)))))))
 
 
-  (define (apply-rules basedir target-dir groups dups)
+  (define (apply-rules basedir target-dir groups)
     (unless (eq? groups '())
       (let* ((group (car groups))
              (rule (cdar group))
@@ -305,9 +305,10 @@
                                                   (alist-ref #:dir rule))))
              (targets (make-target-pairs target-dir files '())))
         (create-directory target-dir #t)
-        (when dups (dir-remove-duplicates (list basedir target-dir)))
+        ;;TODO: group based duplicate removal
+        ;; (when #f (dir-remove-duplicates (list basedir target-dir)))
         (move-files targets))
-      (apply-rules basedir target-dir (cdr groups) dups)))
+      (apply-rules basedir target-dir (cdr groups))))
 
 
   (define (clean-dir dir-rules)
@@ -319,21 +320,27 @@
              (target-dir (make-absolute-pathname basedir target-prefix))
              (groups (group-directory-files basedir (alist-ref #:groups rules))))
         (print basedir " -> " target-dir)
+        (when (alist-ref #:dups rules)
+          (print "Checking for Duplicates in " basedir)
+          (dir-remove-duplicates (list basedir) #:recur? #t))
         (map print groups)
-        (apply-rules basedir target-dir groups (alist-ref #:dups rules)))
+        (apply-rules basedir target-dir groups))
       (clean-dir (cdr dir-rules))))
   )
 
 (module cmd-args
     (parse-args
      config-file)
+
   (import
+    (checkdups)
     (scheme)
     (chicken base)
     (chicken file)
     (pathname-expand)
     (chicken pathname)
     (chicken process-context)
+    (only (chicken string) string-split)
     (args))
 
 
