@@ -152,11 +152,11 @@
          #:recur? recur?
          #:dirs? dirs?)))
 
-  (define (remove-files-in-list list)
+  (define (remove-files-in-list list #!key (dryrun #f))
     (unless (eq? list '())
       (print "delete duplicate:" (car list))
-      (delete-file* (car list))
-      (remove-files-in-list (cdr list))))
+      (unless dryrun (delete-file* (car list)))
+      (remove-files-in-list (cdr list) #:dryrun dryrun)))
 
   )
 
@@ -204,18 +204,18 @@
 
   ;; takes a list of files as returned by `group-duplicates', then deletes
   ;; duplicate files.
-  (define (remove-duplicates dups)
+  (define (remove-duplicates dups #!key (dryrun #f))
     (remove-files-in-list
       ;; 1. Element is always md5sum
       ;; 2. Element is first version of the file
       ;; 3. to last element are files to delete
-     (append-map cddr dups)))
+     (append-map cddr dups) #:dryrun dryrun))
 
   ;; Like `remove-duplicates' but takes a list of directories to check for
   ;; duplicates. Optionally recurs through subdirectories. ignores symlinked
   ;; directories.
-  (define (dir-remove-duplicates dirs #!optional (recur #f))
-    (remove-duplicates (get-duplicate-groups dirs #:recur? recur)))
+  (define (dir-remove-duplicates dirs #!optional (recur #f) #!key (dryrun #f))
+    (remove-duplicates (get-duplicate-groups dirs #:recur? recur) #:dryrun dryrun))
 
   )
 
@@ -272,13 +272,13 @@
                                                                    target-dir))
                                  list))))
 
-  (define (move-files files)
+  (define (move-files files #!key (dryrun #f))
     (unless (eq? files '())
       (let ((target (car files)))
         (cond
          ;; relevant if source file was deleted as a duplicate
          ((not (file-exists? (car target)))
-          (move-files (cdr files)))
+          (move-files (cdr files) #:dryrun dryrun))
          ;; relevant if a different file with the same name exists
          ((file-exists? (cdr target))
           (print (cdr target) " exists ... renaming")
@@ -288,14 +288,14 @@
                               (cdr target)
                               (string-append (pathname-file (cdr target))
                                              "-dup")))
-                       (cdr files))))
+                       (cdr files)) #:dryrun dryrun))
          ;; finally move file
          (else (print (car target) " -> " (cdr target))
-               (move-file (car target) (cdr target))
-               (move-files (cdr files)))))))
+               (unless dryrun (move-file (car target) (cdr target)))
+               (move-files (cdr files) #:dryrun dryrun))))))
 
 
-  (define (apply-rules basedir target-dir groups)
+  (define (apply-rules basedir target-dir groups #!key (dryrun #f))
     (unless (eq? groups '())
       (let* ((group (car groups))
              (rule (cdar group))
@@ -304,14 +304,14 @@
                           (make-absolute-pathname target-dir
                                                   (alist-ref #:dir rule))))
              (targets (make-target-pairs target-dir files '())))
-        (create-directory target-dir #t)
+        (unless dryrun (create-directory target-dir #t))
         ;;TODO: group based duplicate removal
         ;; (when #f (dir-remove-duplicates (list basedir target-dir)))
-        (move-files targets))
-      (apply-rules basedir target-dir (cdr groups))))
+        (move-files targets #:dryrun dryrun))
+      (apply-rules basedir target-dir (cdr groups) #:dryrun dryrun)))
 
 
-  (define (clean-dir dir-rules)
+  (define (clean-dir dir-rules #!key (dryrun #f))
     (unless (eq? dir-rules '())
       (let* ((rules (car dir-rules))
              (basedir (pathname-expand (alist-ref #:basedir rules)))
@@ -322,15 +322,16 @@
         (print basedir " -> " target-dir)
         (when (alist-ref #:dups rules)
           (print "Checking for Duplicates in " basedir)
-          (dir-remove-duplicates (list basedir) #:recur? #t))
+          (dir-remove-duplicates (list basedir) #:recur? #t #:dryrun dryrun))
         (map print groups)
-        (apply-rules basedir target-dir groups))
-      (clean-dir (cdr dir-rules))))
+        (apply-rules basedir target-dir groups #:dryrun dryrun))
+      (clean-dir (cdr dir-rules) #:dryrun dryrun)))
   )
 
 (module cmd-args
     (parse-args
-     config-file)
+     config-file
+     dryrun)
 
   (import
     (checkdups)
@@ -344,11 +345,17 @@
     (args))
 
 
+  (define dryrun #f)
   (define-constant default-config (get-environment-variable "CONFIG_PATH"))
 
   (define config-file  "~/.config/cleandir/config.toml")
   (define options
     (list
+     (args:make-option (d dryrun) #:none
+                       "Run command normally, but don't move or delete any files."
+                       (print "Dry running...")
+                       (newline)
+                       (set! dryrun #t))
      (args:make-option (c config-file) #:required
                        "Config file to use."
                        (set! config-file arg))
@@ -394,5 +401,5 @@
 
   (define (main)
     (parse-args)
-    (clean-dir (read-config-file (pathname-expand config-file))))
+    (clean-dir (read-config-file (pathname-expand config-file)) #:dryrun dryrun))
   )
