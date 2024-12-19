@@ -356,6 +356,10 @@
                        (print "Dry running...")
                        (newline)
                        (set! dryrun #t))
+     (args:make-option (l list-duplicates) #:required
+                       "List duplicate files in Directories. ARG must be a comma separated string of directory paths."
+                       (map print (get-duplicate-groups (string-split arg ",") #:recur? #t))
+                       (exit 0))
      (args:make-option (c config-file) #:required
                        "Config file to use."
                        (set! config-file arg))
